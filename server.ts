@@ -2,12 +2,69 @@ import express from 'express';
 import path from 'path';
 import cors from 'cors';
 import fs from 'fs';
-import { execFile, spawn } from 'child_process';
+import { execFile, spawn, execSync } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import type { DownloadJob, DownloadType, Format, VideoInfo } from './src/types';
 
 const app = express();
 const PORT = 3000;
+
+// ─── Resolve yt-dlp Executable Command ─────────────────────────────────────────
+
+interface YtDlpCmd {
+  command: string;
+  argsPrefix: string[];
+  isAvailable: boolean;
+}
+
+function getYtDlpCommand(): YtDlpCmd {
+  // 1. Try global yt-dlp command in system PATH
+  try {
+    execSync('yt-dlp --version', { stdio: 'ignore' });
+    return { command: 'yt-dlp', argsPrefix: [], isAvailable: true };
+  } catch (e) {
+    // Continue
+  }
+
+  const localPath = path.join(process.cwd(), 'bin', 'yt-dlp');
+
+  // 2. Try running local yt-dlp binary directly
+  try {
+    if (fs.existsSync(localPath)) {
+      execSync(`"${localPath}" --version`, { stdio: 'ignore' });
+      return { command: localPath, argsPrefix: [], isAvailable: true };
+    }
+  } catch (e) {
+    // Continue
+  }
+
+  // 3. Try running local yt-dlp using python3
+  try {
+    if (fs.existsSync(localPath)) {
+      execSync(`python3 "${localPath}" --version`, { stdio: 'ignore' });
+      return { command: 'python3', argsPrefix: [localPath], isAvailable: true };
+    }
+  } catch (e) {
+    // Continue
+  }
+
+  // 4. Try running local yt-dlp using python
+  try {
+    if (fs.existsSync(localPath)) {
+      execSync(`python "${localPath}" --version`, { stdio: 'ignore' });
+      return { command: 'python', argsPrefix: [localPath], isAvailable: true };
+    }
+  } catch (e) {
+    // Continue
+  }
+
+  const exists = fs.existsSync(localPath);
+  return {
+    command: localPath,
+    argsPrefix: [],
+    isAvailable: exists
+  };
+}
 
 app.use(cors());
 app.use(express.json());
@@ -99,9 +156,8 @@ function startJobProgress(job: DownloadJob) {
   job.log += `[info] Starting real yt-dlp download process...\n`;
   broadcastJob(job);
 
-  const ytDlpPath = path.join(process.cwd(), 'bin', 'yt-dlp');
-  
-  const args: string[] = [];
+  const ytDlpConfig = getYtDlpCommand();
+  const args: string[] = [...ytDlpConfig.argsPrefix];
 
   // Use cookies if provided
   const cookiesPath = path.join(DOWNLOADS_DIR, 'cookies.txt');
@@ -141,7 +197,7 @@ function startJobProgress(job: DownloadJob) {
   job.log += `[info] Executing: yt-dlp ${args.map(a => a.includes(' ') ? `"${a}"` : a).join(' ')}\n\n`;
   broadcastJob(job);
 
-  const child = spawn(ytDlpPath, args);
+  const child = spawn(ytDlpConfig.command, args);
   activeDownloaders.set(job.id, child);
 
   child.stdout.on('data', (data) => {
@@ -223,10 +279,8 @@ function startJobProgress(job: DownloadJob) {
 
 // 1. Health check (Verify yt-dlp availability)
 app.get('/api/health', (req, res) => {
-  const ytDlpPath = path.join(process.cwd(), 'bin', 'yt-dlp');
-  fs.access(ytDlpPath, fs.constants.X_OK, (err) => {
-    res.json({ ok: true, ytdlp: !err });
-  });
+  const config = getYtDlpCommand();
+  res.json({ ok: true, ytdlp: config.isAvailable });
 });
 
 // 2. Fetch video info in real-time using yt-dlp -J
@@ -236,7 +290,7 @@ app.post('/api/info', (req, res) => {
     return res.status(400).json({ error: 'URL is required' });
   }
 
-  const ytDlpPath = path.join(process.cwd(), 'bin', 'yt-dlp');
+  const ytDlpConfig = getYtDlpCommand();
   
   let targetUrl = url.trim();
   const isSearch = !targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.startsWith('ytsearch:');
@@ -245,7 +299,7 @@ app.post('/api/info', (req, res) => {
   }
 
   // Call yt-dlp with JSON export and no-playlist flag
-  const infoArgs = ['-J', '--no-playlist', '--flat-playlist'];
+  const infoArgs = [...ytDlpConfig.argsPrefix, '-J', '--no-playlist', '--flat-playlist'];
   const cookiesPath = path.join(DOWNLOADS_DIR, 'cookies.txt');
   if (fs.existsSync(cookiesPath)) {
     infoArgs.push('--cookies', cookiesPath);
@@ -253,7 +307,7 @@ app.post('/api/info', (req, res) => {
   infoArgs.push(targetUrl);
 
   execFile(
-    ytDlpPath,
+    ytDlpConfig.command,
     infoArgs,
     { maxBuffer: 10 * 1024 * 1024 }, // 10MB buffer
     (error, stdout, stderr) => {
