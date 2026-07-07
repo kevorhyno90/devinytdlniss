@@ -20,15 +20,30 @@ export default function Home({ onGoToQueue }: Props) {
   const [showPicker, setShowPicker] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [backendOk, setBackendOk] = useState<boolean | null>(null);
+  type BackendStatus = 'checking' | 'connected' | 'ytdlp_missing' | 'disconnected';
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>('checking');
+  const [inputApiUrl, setInputApiUrl] = useState(localStorage.getItem('api_base_url') || '');
+  const [recheckTrigger, setRecheckTrigger] = useState(0);
 
   // Check backend on mount
   useEffect(() => {
+    setBackendStatus('checking');
     fetch(getApiUrl('/api/health?_t=' + Date.now()))
-      .then((r) => r.json())
-      .then((d) => setBackendOk(d.ytdlp))
-      .catch(() => setBackendOk(false));
-  }, []);
+      .then((r) => {
+        if (!r.ok) throw new Error('Not OK');
+        return r.json();
+      })
+      .then((d) => {
+        if (d && d.ytdlp) {
+          setBackendStatus('connected');
+        } else {
+          setBackendStatus('ytdlp_missing');
+        }
+      })
+      .catch(() => {
+        setBackendStatus('disconnected');
+      });
+  }, [recheckTrigger]);
 
   const handlePaste = async () => {
     try {
@@ -97,7 +112,7 @@ export default function Home({ onGoToQueue }: Props) {
       </div>
 
       {/* Backend warning */}
-      {backendOk === false && (
+      {backendStatus === 'ytdlp_missing' && (
         <div
           style={{
             margin: '0 16px 16px',
@@ -110,9 +125,64 @@ export default function Home({ onGoToQueue }: Props) {
             lineHeight: 1.5
           }}
         >
-          <strong>⚠ yt-dlp not found.</strong> Please install yt-dlp and ensure it's in your PATH.
+          <strong>⚠ yt-dlp not found.</strong> Please install yt-dlp on your backend server.
           <br />
           <span style={{ color: 'var(--t3)' }}>Download: github.com/yt-dlp/yt-dlp</span>
+        </div>
+      )}
+
+      {backendStatus === 'disconnected' && (
+        <div
+          style={{
+            margin: '0 16px 20px',
+            padding: '16px',
+            background: 'var(--bg-2)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--r-md)',
+            fontSize: 13,
+            color: 'var(--t1)',
+            lineHeight: 1.5
+          }}
+        >
+          <div style={{ color: 'var(--red)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            🔌 Cannot connect to the YTDLnis Backend Server
+          </div>
+          <p style={{ color: 'var(--t2)', fontSize: 12.5, marginBottom: 12 }}>
+            Since you are running on a static platform like Vercel, the app needs to connect to your active backend server (e.g. on Railway, Render, or Cloud Run) to run <code>yt-dlp</code>.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={inputApiUrl}
+              onChange={(e) => setInputApiUrl(e.target.value)}
+              placeholder="https://your-backend-service.com"
+              style={{
+                flex: 1,
+                minWidth: '200px',
+                padding: '8px 12px',
+                background: 'var(--bg-1)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--r-sm)',
+                color: 'var(--t1)',
+                fontSize: 13
+              }}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                const trimmed = inputApiUrl.trim();
+                if (trimmed) {
+                  localStorage.setItem('api_base_url', trimmed);
+                } else {
+                  localStorage.removeItem('api_base_url');
+                }
+                setRecheckTrigger(prev => prev + 1);
+              }}
+              style={{ padding: '8px 16px' }}
+            >
+              Connect
+            </button>
+          </div>
         </div>
       )}
 
