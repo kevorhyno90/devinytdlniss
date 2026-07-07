@@ -8,7 +8,12 @@ const fs = require('fs');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+const db = require('./db');
+const { authRouter, authenticateToken } = require('./auth');
+
+app.use('/api/auth', authRouter);
 
 // ─── State ────────────────────────────────────────────────────────────────────
 /** @type {Map<string, import('./types').Job>} */
@@ -36,6 +41,84 @@ function checkYtDlp() {
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
+
+// Sync Routes
+app.get('/api/sync/history', authenticateToken, (req, res) => {
+  try {
+    const history = db.prepare('SELECT * FROM history WHERE user_id = ?').all(req.user.id);
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch history' });
+  }
+});
+
+app.post('/api/sync/history', authenticateToken, (req, res) => {
+  const entries = req.body;
+  if (!Array.isArray(entries)) return res.status(400).json({ error: 'Expected an array' });
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO history (id, user_id, url, title, author, thumb, duration, type, format, completedAt, downloadPath, filename, filesize, website)
+      VALUES (@id, @user_id, @url, @title, @author, @thumb, @duration, @type, @format, @completedAt, @downloadPath, @filename, @filesize, @website)
+      ON CONFLICT(id) DO UPDATE SET
+        url=excluded.url, title=excluded.title, author=excluded.author, thumb=excluded.thumb,
+        duration=excluded.duration, type=excluded.type, format=excluded.format,
+        completedAt=excluded.completedAt, downloadPath=excluded.downloadPath,
+        filename=excluded.filename, filesize=excluded.filesize, website=excluded.website
+    `);
+
+    const insertMany = db.transaction((items) => {
+      for (const item of items) {
+        item.user_id = req.user.id;
+        item.format = item.format ? JSON.stringify(item.format) : null;
+        stmt.run(item);
+      }
+    });
+
+    insertMany(entries);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('History sync error:', err);
+    res.status(500).json({ error: 'Failed to sync history' });
+  }
+});
+
+app.get('/api/sync/templates', authenticateToken, (req, res) => {
+  try {
+    const templates = db.prepare('SELECT * FROM templates WHERE user_id = ?').all(req.user.id);
+    res.json(templates);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch templates' });
+  }
+});
+
+app.post('/api/sync/templates', authenticateToken, (req, res) => {
+  const entries = req.body;
+  if (!Array.isArray(entries)) return res.status(400).json({ error: 'Expected an array' });
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO templates (id, user_id, name, template, createdAt)
+      VALUES (@id, @user_id, @name, @template, @createdAt)
+      ON CONFLICT(id) DO UPDATE SET
+        name=excluded.name, template=excluded.template, createdAt=excluded.createdAt
+    `);
+
+    const insertMany = db.transaction((items) => {
+      for (const item of items) {
+        item.user_id = req.user.id;
+        stmt.run(item);
+      }
+    });
+
+    insertMany(entries);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Template sync error:', err);
+    res.status(500).json({ error: 'Failed to sync templates' });
+  }
+});
+
 
 /** SSE stream */
 app.get('/api/events', (req, res) => {
@@ -173,13 +256,13 @@ app.get('/api/logs/:id', (req, res) => {
 });
 
 /** Stream media file */
-app.get('/api/stream/:id', (req, res) => {
-  const job = jobs.get(req.params.id);
-  if (!job || !job.filename || job.status !== 'completed') {
-    return res.status(404).json({ error: 'File not ready' });
+app.get('/api/stream/filename/:filename', (req, res) => {
+  const filename = req.params.filename;
+  if (!filename) {
+    return res.status(404).json({ error: 'Filename not provided' });
   }
 
-  const filePath = path.join(DEFAULT_OUTPUT_DIR, job.filename);
+  const filePath = path.join(DEFAULT_OUTPUT_DIR, filename);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found on disk' });
   }
@@ -187,7 +270,12 @@ app.get('/api/stream/:id', (req, res) => {
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const range = req.headers.range;
-  const contentType = job.filename.endsWith('.mp3') || job.filename.endsWith('.m4a') ? 'audio/mpeg' : 'video/mp4';
+  const contentType = filename.endsWith('.mp3') || filename.endsWith('.m4a') ? 'audio/mpeg' : 
+                      filename.endsWith('.webm') ? 'video/webm' : 'video/mp4';
+
+  const isDownload = req.query.download === 'true';
+  const contentDisposition = isDownload ? `attachment; filename="${filename.replace(/"/g, '\\"')}"` : 'inline';
+  const finalContentType = isDownload ? 'application/octet-stream' : contentType;
 
   if (range) {
     const parts = range.replace(/bytes=/, "").split("-");
@@ -199,14 +287,17 @@ app.get('/api/stream/:id', (req, res) => {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Accept-Ranges': 'bytes',
       'Content-Length': chunksize,
-      'Content-Type': contentType,
+      'Content-Type': finalContentType,
+      'Content-Disposition': contentDisposition
     };
     res.writeHead(206, head);
     file.pipe(res);
   } else {
     const head = {
       'Content-Length': fileSize,
-      'Content-Type': contentType,
+      'Content-Type': finalContentType,
+      'Content-Disposition': contentDisposition,
+      'Accept-Ranges': 'bytes'
     };
     res.writeHead(200, head);
     fs.createReadStream(filePath).pipe(res);
@@ -300,6 +391,7 @@ function startDownload(id) {
   const destRe1 = /\[download\] Destination:\s*(.+?)\r?\n/;
   const destRe2 = /\[Merger\] Merging formats into "(.+?)"/;
   const destRe3 = /\[ExtractAudio\] Destination:\s*(.+?)\r?\n/;
+  const destRe4 = /\[download\] (.*?) has already been downloaded/;
 
   const handleOutput = (chunk) => {
     const text = chunk.toString();
@@ -319,6 +411,8 @@ function startDownload(id) {
     if (m2) job.filename = path.basename(m2[1].trim());
     const m3 = text.match(destRe3);
     if (m3) job.filename = path.basename(m3[1].trim());
+    const m4 = text.match(destRe4);
+    if (m4) job.filename = path.basename(m4[1].trim());
 
     // Post-processing line
     if (text.includes('[Merger]') || text.includes('[ExtractAudio]')) {
@@ -370,7 +464,7 @@ function buildArgs(job) {
   ];
 
   if (job.type === 'audio') {
-    args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+    args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0', '--postprocessor-args', 'ffmpeg:-sample_fmt s16p');
   } else if (job.type === 'video') {
     if (job.format && job.format.format_id) {
       args.push('-f', `${job.format.format_id}+bestaudio/best`);

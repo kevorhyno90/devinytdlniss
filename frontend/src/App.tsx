@@ -7,6 +7,9 @@ import Home from './pages/Home';
 import Queue from './pages/Queue';
 import History from './pages/History';
 import More from './pages/More';
+import Login from './pages/Login';
+import { getToken } from './api/client';
+import { startPeriodicSync } from './api/sync';
 
 // ─── Toast Context ─────────────────────────────────────────────────────────────
 
@@ -46,11 +49,14 @@ export default function App() {
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // ── Load initial jobs ─────────────────────────────────────────────────────
+  // ── Load initial jobs & sync ──────────────────────────────────────────────
   useEffect(() => {
-    listDownloads()
-      .then(setJobs)
-      .catch(() => {}); // backend might not be running yet
+    if (getToken()) {
+      startPeriodicSync();
+      listDownloads()
+        .then(setJobs)
+        .catch(() => {}); // backend might not be running yet
+    }
   }, []);
 
   // ── SSE real-time updates ─────────────────────────────────────────────────
@@ -90,6 +96,10 @@ export default function App() {
   }, []);
 
   const activeCount = jobs.filter((j) => j.status === 'active' || j.status === 'queued').length;
+
+  if (!getToken()) {
+    return <Login />;
+  }
 
   return (
     <ToastContext.Provider value={{ addToast }}>

@@ -17,6 +17,9 @@ export default function PlayerModal({ job, onClose }: Props) {
           <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, paddingRight: 16 }}>
             {job.title}
           </div>
+          <a href={job.filename ? `/api/stream/filename/${encodeURIComponent(job.filename)}?download=true` : '#'} download className="btn btn-primary" style={{ marginRight: 8, padding: '4px 12px', fontSize: 12 }}>
+            ⬇ Save to PC
+          </a>
           <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: 'var(--t1)', background: 'var(--bg3)', borderRadius: '50%' }}>
             ✕
           </button>
@@ -27,20 +30,24 @@ export default function PlayerModal({ job, onClose }: Props) {
           {isAudio ? (
             <div style={{ padding: 40, width: '100%', textAlign: 'center' }}>
               <div style={{ fontSize: 64, marginBottom: 20 }}>🎵</div>
-              <audio 
-                controls 
-                autoPlay 
-                src={`/api/stream/${job.id}`} 
-                style={{ width: '100%', maxWidth: 400 }} 
-              />
+              {job.filename && (
+                <audio 
+                  controls 
+                  autoPlay 
+                  src={`/api/stream/filename/${encodeURIComponent(job.filename)}`} 
+                  style={{ width: '100%', maxWidth: 400 }} 
+                />
+              )}
             </div>
           ) : (
-            <video 
-              controls 
-              autoPlay 
-              src={`/api/stream/${job.id}`} 
-              style={{ width: '100%', maxHeight: '70vh' }} 
-            />
+            job.filename && (
+              <video 
+                controls 
+                autoPlay 
+                src={`/api/stream/filename/${encodeURIComponent(job.filename)}`} 
+                style={{ width: '100%', maxHeight: '70vh' }} 
+              />
+            )
           )}
         </div>
 
