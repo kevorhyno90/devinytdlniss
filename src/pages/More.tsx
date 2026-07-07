@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useJobs } from '../contexts';
+import { getApiUrl } from '../api/client';
 
 interface MoreItem {
   id: string;
@@ -30,15 +31,22 @@ export default function More() {
   const { jobs } = useJobs();
   const [showAbout, setShowAbout] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showApiSettings, setShowApiSettings] = useState(false);
   
   const [cookies, setCookies] = useState('');
   const [hasCookies, setHasCookies] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
+  const [apiUrl, setApiUrl] = useState(localStorage.getItem('api_base_url') || '');
+  const [apiSaveMessage, setApiSaveMessage] = useState('');
+  const [apiBaseUrlChangedTrigger, setApiBaseUrlChangedTrigger] = useState(0);
+
   useEffect(() => {
     // Fetch cookies configuration status from the backend
-    fetch('/api/settings/cookies')
+    setHasCookies(false);
+    setCookies('');
+    fetch(getApiUrl('/api/settings/cookies'))
       .then(res => res.json())
       .then(data => {
         if (data.hasCookies) {
@@ -47,13 +55,13 @@ export default function More() {
         }
       })
       .catch(err => console.error('Failed to load cookies configuration', err));
-  }, []);
+  }, [apiBaseUrlChangedTrigger]);
 
   const handleSaveCookies = async () => {
     setIsSaving(true);
     setSaveMessage('');
     try {
-      const r = await fetch('/api/settings/cookies', {
+      const r = await fetch(getApiUrl('/api/settings/cookies'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cookies })
@@ -102,6 +110,16 @@ export default function More() {
           }
         },
         {
+          id: 'backend-url',
+          icon: '🔗',
+          iconBg: 'var(--green-dim)',
+          name: 'Backend API URL',
+          desc: apiUrl ? `Custom: ${apiUrl}` : 'Default: (relative to server)',
+          onClick: () => {
+            setShowApiSettings(true);
+          }
+        },
+        {
           id: 'ytdlp-info',
           icon: '🔧',
           iconBg: 'var(--primary-dim)',
@@ -109,7 +127,7 @@ export default function More() {
           desc: 'Check backend status',
           onClick: async () => {
             try {
-              const r = await fetch('/api/health?_t=' + Date.now());
+              const r = await fetch(getApiUrl('/api/health?_t=' + Date.now()));
               const d = await r.json();
               alert(d.ytdlp
                 ? '✅ yt-dlp is installed and available!'
@@ -318,7 +336,7 @@ export default function More() {
                 </button>
                 {hasCookies && (
                   <button
-                    className="btn btn-ghost"
+                     className="btn btn-ghost"
                     onClick={() => {
                       setCookies('');
                       setTimeout(() => handleSaveCookies(), 50);
@@ -327,6 +345,95 @@ export default function More() {
                     style={{ border: '1px solid var(--border)', color: 'var(--red)' }}
                   >
                     Clear Cookies
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Backend API URL Settings Modal */}
+      {showApiSettings && (
+        <div className="modal-overlay" onClick={() => setShowApiSettings(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '75dvh' }}>
+            <div className="modal-handle" />
+            <div className="modal-header">
+              <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                🔗 Configure Backend URL
+              </span>
+              <button id="close-api-url" className="btn btn-ghost btn-icon" onClick={() => setShowApiSettings(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '20px' }}>
+              <div style={{ fontSize: 13, color: 'var(--t3)', lineHeight: 1.5, marginBottom: 16 }}>
+                If you host this PWA on a static hosting platform like Vercel, it needs a running backend server to execute <code>yt-dlp</code>. 
+                <br /><br />
+                Enter the full URL of your running backend (e.g., <code>https://my-backend-app.railway.app</code>). Keep empty to use relative paths.
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--t2)' }}>Backend Base URL</label>
+                <input
+                  type="text"
+                  value={apiUrl}
+                  onChange={(e) => setApiUrl(e.target.value)}
+                  placeholder="https://your-backend-service.com"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    background: 'var(--bg-1)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--r-md)',
+                    color: 'var(--t1)',
+                    fontSize: '13px'
+                  }}
+                />
+              </div>
+
+              {apiSaveMessage && (
+                <div style={{
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: 'var(--green)',
+                  marginBottom: 16
+                }}>
+                  {apiSaveMessage}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const trimmed = apiUrl.trim();
+                    if (trimmed) {
+                      localStorage.setItem('api_base_url', trimmed);
+                      setApiSaveMessage('✅ Custom Backend API URL saved successfully!');
+                    } else {
+                      localStorage.removeItem('api_base_url');
+                      setApiSaveMessage('✅ Reverted to default relative paths.');
+                    }
+                    setApiUrl(trimmed);
+                    setApiBaseUrlChangedTrigger(prev => prev + 1);
+                    setTimeout(() => setApiSaveMessage(''), 3000);
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  Save URL
+                </button>
+                {localStorage.getItem('api_base_url') && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      localStorage.removeItem('api_base_url');
+                      setApiUrl('');
+                      setApiBaseUrlChangedTrigger(prev => prev + 1);
+                      setApiSaveMessage('✅ Backend URL cleared. Using relative paths.');
+                      setTimeout(() => setApiSaveMessage(''), 3000);
+                    }}
+                    style={{ border: '1px solid var(--border)', color: 'var(--red)' }}
+                  >
+                    Clear
                   </button>
                 )}
               </div>

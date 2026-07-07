@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { HistoryEntry, DownloadType } from '../types';
 import { db } from '../db';
 import { useJobs, usePlayer } from '../contexts';
+import { getApiUrl } from '../api/client';
 
 type FilterType = 'all' | DownloadType;
 
@@ -165,7 +166,7 @@ export default function History() {
                 <a
                   id={`hist-download-${h.id}`}
                   className="btn btn-ghost btn-icon"
-                  href={`/api/download-file/${h.id}`}
+                  href={getApiUrl(`/api/download-file/${h.id}`)}
                   download
                   title="Download file to local disk"
                   style={{ color: 'var(--green)' }}

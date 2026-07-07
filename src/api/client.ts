@@ -1,13 +1,23 @@
 import type { DownloadJob, VideoInfo, Format, DownloadType } from '../types';
 
+export function getApiUrl(path: string): string {
+  const base = import.meta.env.VITE_API_BASE_URL || localStorage.getItem('api_base_url') || '';
+  if (base) {
+    const trimmedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+    const trimmedPath = path.startsWith('/') ? path : '/' + path;
+    return trimmedBase + trimmedPath;
+  }
+  return path;
+}
+
 export async function listDownloads(): Promise<DownloadJob[]> {
-  const res = await fetch('/api/downloads');
+  const res = await fetch(getApiUrl('/api/downloads'));
   if (!res.ok) throw new Error('Failed to list downloads');
   return res.json();
 }
 
 export async function fetchInfo(url: string): Promise<VideoInfo> {
-  const res = await fetch('/api/info', {
+  const res = await fetch(getApiUrl('/api/info'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -31,7 +41,7 @@ export interface StartDownloadOptions {
 }
 
 export async function startDownload(options: StartDownloadOptions): Promise<DownloadJob> {
-  const res = await fetch('/api/download', {
+  const res = await fetch(getApiUrl('/api/download'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(options),
@@ -41,17 +51,17 @@ export async function startDownload(options: StartDownloadOptions): Promise<Down
 }
 
 export async function cancelDownload(id: string): Promise<void> {
-  const res = await fetch(`/api/downloads/${id}`, { method: 'DELETE' });
+  const res = await fetch(getApiUrl(`/api/downloads/${id}`), { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to cancel download');
 }
 
 export async function retryDownload(id: string): Promise<void> {
-  const res = await fetch(`/api/downloads/${id}/retry`, { method: 'POST' });
+  const res = await fetch(getApiUrl(`/api/downloads/${id}/retry`), { method: 'POST' });
   if (!res.ok) throw new Error('Failed to retry download');
 }
 
 export async function getLog(id: string): Promise<string> {
-  const res = await fetch(`/api/logs/${id}`);
+  const res = await fetch(getApiUrl(`/api/logs/${id}`));
   if (!res.ok) throw new Error('Failed to load logs');
   const data = await res.json();
   return data.log;

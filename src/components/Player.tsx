@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { DownloadJob, HistoryEntry } from '../types';
+import { getApiUrl } from '../api/client';
 
 interface PlayerProps {
   activeMedia: DownloadJob | HistoryEntry | null;
@@ -29,7 +30,7 @@ export default function Player({ activeMedia, onClose }: PlayerProps) {
   // Auto-play and handle src loading when activeMedia changes
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.src = `/api/stream-file/${activeMedia.id}`;
+      videoRef.current.src = getApiUrl(`/api/stream-file/${activeMedia.id}`);
       videoRef.current.load();
       setIsPlaying(true);
       videoRef.current.play().catch(() => {
@@ -216,7 +217,7 @@ export default function Player({ activeMedia, onClose }: PlayerProps) {
                 // Video tag mirroring the hidden video's playback
                 <video
                   className="player-video-tag"
-                  src={`/api/stream-file/${activeMedia.id}`}
+                  src={getApiUrl(`/api/stream-file/${activeMedia.id}`)}
                   autoPlay={isPlaying}
                   controls
                   playsInline

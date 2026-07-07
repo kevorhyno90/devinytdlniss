@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { VideoInfo, DownloadType, Format } from '../types';
-import { fetchInfo, startDownload } from '../api/client';
+import { fetchInfo, startDownload, getApiUrl } from '../api/client';
 import { useToast } from '../contexts';
 import FormatPicker from '../components/FormatPicker';
 
@@ -24,7 +24,7 @@ export default function Home({ onGoToQueue }: Props) {
 
   // Check backend on mount
   useEffect(() => {
-    fetch('/api/health?_t=' + Date.now())
+    fetch(getApiUrl('/api/health?_t=' + Date.now()))
       .then((r) => r.json())
       .then((d) => setBackendOk(d.ytdlp))
       .catch(() => setBackendOk(false));

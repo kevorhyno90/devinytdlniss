@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { DownloadJob, Toast, ToastType, HistoryEntry } from './types';
-import { listDownloads } from './api/client';
+import { listDownloads, getApiUrl } from './api/client';
 import { ToastContext, JobsContext, PlayerContext } from './contexts';
 import Navbar from './components/Navbar';
 import ToastContainer from './components/Toast';
@@ -43,7 +43,7 @@ export default function App() {
     let retryTimer: ReturnType<typeof setTimeout>;
 
     function connect() {
-      source = new EventSource('/api/events');
+      source = new EventSource(getApiUrl('/api/events'));
 
       source.addEventListener('job', (e: MessageEvent) => {
         try {

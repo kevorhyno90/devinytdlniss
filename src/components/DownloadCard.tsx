@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { DownloadJob } from '../types';
-import { cancelDownload, retryDownload, getLog } from '../api/client';
+import { cancelDownload, retryDownload, getLog, getApiUrl } from '../api/client';
 import { useToast, usePlayer } from '../contexts';
 
 interface Props {
@@ -181,7 +181,7 @@ export default function DownloadCard({ job }: Props) {
                 <a
                   id={`save-file-${job.id}`}
                   className="btn btn-sm btn-success"
-                  href={`/api/download-file/${job.id}`}
+                  href={getApiUrl(`/api/download-file/${job.id}`)}
                   download
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
                 >
