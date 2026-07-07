@@ -109,7 +109,7 @@ export default function More() {
           desc: 'Check backend status',
           onClick: async () => {
             try {
-              const r = await fetch('/api/health');
+              const r = await fetch('/api/health?_t=' + Date.now());
               const d = await r.json();
               alert(d.ytdlp
                 ? '✅ yt-dlp is installed and available!'

@@ -24,7 +24,7 @@ export default function Home({ onGoToQueue }: Props) {
 
   // Check backend on mount
   useEffect(() => {
-    fetch('/api/health')
+    fetch('/api/health?_t=' + Date.now())
       .then((r) => r.json())
       .then((d) => setBackendOk(d.ytdlp))
       .catch(() => setBackendOk(false));

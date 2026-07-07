@@ -69,6 +69,14 @@ function getYtDlpCommand(): YtDlpCmd {
 app.use(cors());
 app.use(express.json());
 
+// Prevent aggressive browser caching of backend API responses
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Ensure downloads folder exists at root of the workspace
 const DOWNLOADS_DIR = path.join(process.cwd(), 'downloads');
 if (!fs.existsSync(DOWNLOADS_DIR)) {
