@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 app.use(cors());
@@ -103,6 +104,7 @@ app.post('/api/download', (req, res) => {
     eta: '',
     size: '',
     downloadPath: DEFAULT_OUTPUT_DIR,
+    filename: '',
     createdAt: Date.now(),
     completedAt: null,
     log: '',
@@ -170,11 +172,56 @@ app.get('/api/logs/:id', (req, res) => {
   res.json({ id: job.id, log: job.log });
 });
 
+/** Stream media file */
+app.get('/api/stream/:id', (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job || !job.filename || job.status !== 'completed') {
+    return res.status(404).json({ error: 'File not ready' });
+  }
+
+  const filePath = path.join(DEFAULT_OUTPUT_DIR, job.filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found on disk' });
+  }
+
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+  const contentType = job.filename.endsWith('.mp3') || job.filename.endsWith('.m4a') ? 'audio/mpeg' : 'video/mp4';
+
+  if (range) {
+    const parts = range.replace(/bytes=/, "").split("-");
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const chunksize = (end - start) + 1;
+    const file = fs.createReadStream(filePath, { start, end });
+    const head = {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunksize,
+      'Content-Type': contentType,
+    };
+    res.writeHead(206, head);
+    file.pipe(res);
+  } else {
+    const head = {
+      'Content-Length': fileSize,
+      'Content-Type': contentType,
+    };
+    res.writeHead(200, head);
+    fs.createReadStream(filePath).pipe(res);
+  }
+});
+
 // ─── Core Logic ───────────────────────────────────────────────────────────────
 
 function fetchVideoInfo(url) {
   return new Promise((resolve, reject) => {
-    const args = ['--dump-json', '--no-playlist', '--no-warnings', url];
+    // Treat as search query if it doesn't look like a URL
+    const isUrl = /^https?:\/\//i.test(url);
+    const target = isUrl ? url : `ytsearch1:${url}`;
+
+    const args = ['--dump-json', '--no-playlist', '--no-warnings', target];
     const proc = spawn('yt-dlp', args);
     let stdout = '';
     let stderr = '';
@@ -212,7 +259,7 @@ function fetchVideoInfo(url) {
         }));
 
         resolve({
-          url,
+          url: info.webpage_url || info.original_url || url,
           title: info.title || 'Unknown',
           author: info.uploader || info.channel || '',
           thumb: info.thumbnail || '',
@@ -249,9 +296,10 @@ function startDownload(id) {
   job._pid = proc.pid;
   job._proc = proc;
 
-  // Regex for yt-dlp progress lines:
-  // [download]  45.3% of 12.34MiB at 1.23MiB/s ETA 00:05
   const progressRe = /\[download\]\s+([\d.]+)%\s+of\s+([\S]+)\s+at\s+([\S]+)\s+ETA\s+([\S]+)/;
+  const destRe1 = /\[download\] Destination:\s*(.+?)\r?\n/;
+  const destRe2 = /\[Merger\] Merging formats into "(.+?)"/;
+  const destRe3 = /\[ExtractAudio\] Destination:\s*(.+?)\r?\n/;
 
   const handleOutput = (chunk) => {
     const text = chunk.toString();
@@ -264,6 +312,13 @@ function startDownload(id) {
       job.speed = match[3];
       job.eta = match[4];
     }
+
+    const m1 = text.match(destRe1);
+    if (m1) job.filename = path.basename(m1[1].trim());
+    const m2 = text.match(destRe2);
+    if (m2) job.filename = path.basename(m2[1].trim());
+    const m3 = text.match(destRe3);
+    if (m3) job.filename = path.basename(m3[1].trim());
 
     // Post-processing line
     if (text.includes('[Merger]') || text.includes('[ExtractAudio]')) {

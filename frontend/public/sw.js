@@ -18,8 +18,8 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Never cache API calls or SSE streams
-  if (e.request.url.includes('/api/')) return;
+  // Never cache API calls, SSE streams, or non-http requests (like extensions)
+  if (e.request.url.includes('/api/') || !e.request.url.startsWith('http')) return;
 
   e.respondWith(
     caches.match(e.request).then((cached) => {

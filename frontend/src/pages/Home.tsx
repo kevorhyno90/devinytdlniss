@@ -264,7 +264,7 @@ export default function Home({ onGoToQueue }: Props) {
           selected={format}
           onSelect={(f) => { setFormat(f); setShowPicker(false); }}
           onClose={() => setShowPicker(false)}
-          type={type === 'auto' ? 'video' : type}
+          type={type === 'audio' ? 'audio' : 'video'}
         />
       )}
     </div>
