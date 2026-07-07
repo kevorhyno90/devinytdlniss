@@ -48,6 +48,7 @@ export interface DownloadJob {
   eta: string;
   size: string;
   downloadPath: string;
+  filename?: string;
   createdAt: number;
   completedAt: number | null;
   log: string;
@@ -67,6 +68,7 @@ export interface HistoryEntry {
   format: Format | null;
   completedAt: number;
   downloadPath: string;
+  filename?: string;
   filesize: number;
   website: string;
 }

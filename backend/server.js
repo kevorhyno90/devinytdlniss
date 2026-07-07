@@ -366,7 +366,6 @@ function buildArgs(job) {
   const args = [
     '--progress',
     '--newline',
-    '--no-part',
     '-o', outputTemplate
   ];
 

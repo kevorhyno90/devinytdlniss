@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { HistoryEntry, DownloadType } from '../types';
 import { db } from '../db';
 import { useJobs } from '../App';
+import PlayerModal from '../components/PlayerModal';
 
 type FilterType = 'all' | DownloadType;
 
@@ -29,6 +30,7 @@ export default function History() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
+  const [playingJob, setPlayingJob] = useState<HistoryEntry | null>(null);
 
   // Sync completed jobs to IndexedDB history
   useEffect(() => {
@@ -152,6 +154,14 @@ export default function History() {
               </div>
 
               <button
+                className="btn btn-ghost btn-icon"
+                onClick={(e) => { e.stopPropagation(); setPlayingJob(h); }}
+                title="Play media"
+                style={{ flexShrink: 0, color: 'var(--blue)', alignSelf: 'center', marginRight: 8 }}
+              >
+                ▶
+              </button>
+              <button
                 id={`hist-del-${h.id}`}
                 className="btn btn-ghost btn-icon"
                 onClick={(e) => handleDelete(h.id, e)}
@@ -164,6 +174,10 @@ export default function History() {
           ))
         )}
       </div>
+
+      {playingJob && (
+        <PlayerModal job={playingJob} onClose={() => setPlayingJob(null)} />
+      )}
     </div>
   );
 }

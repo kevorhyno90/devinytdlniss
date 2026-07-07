@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { DownloadJob } from '../types';
 import { cancelDownload, retryDownload, getLog } from '../api/client';
 import { useToast } from '../App';
+import PlayerModal from './PlayerModal';
 
 interface Props {
   job: DownloadJob;
@@ -32,6 +33,7 @@ export default function DownloadCard({ job }: Props) {
   const { addToast } = useToast();
   const [showLog, setShowLog] = useState(false);
   const [log, setLog] = useState('');
+  const [playing, setPlaying] = useState(false);
 
   const handleCancel = async () => {
     try {
@@ -177,6 +179,16 @@ export default function DownloadCard({ job }: Props) {
                 📋 Log
               </button>
             )}
+            {isCompleted && (
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => setPlaying(true)}
+                title="Play media"
+                style={{ color: 'var(--blue)' }}
+              >
+                ▶ Play
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -199,6 +211,11 @@ export default function DownloadCard({ job }: Props) {
             <pre className="log-pre">{log || '(empty)'}</pre>
           </div>
         </div>
+      )}
+
+      {/* Player Modal */}
+      {playing && (
+        <PlayerModal job={job} onClose={() => setPlaying(false)} />
       )}
     </>
   );
