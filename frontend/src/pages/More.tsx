@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useJobs } from '../App';
 
 interface MoreItem {
@@ -26,14 +26,46 @@ function StatCard({ label, value, color }: { label: string; value: number | stri
   );
 }
 
+type Team = { id: string; name: string; members: string[]; shopAccess: boolean };
+
 export default function More() {
   const { jobs } = useJobs();
   const [showAbout, setShowAbout] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showTeams, setShowTeams] = useState(false);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [newTeamName, setNewTeamName] = useState('');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('ytdlnis.teams');
+      if (raw) setTeams(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ytdlnis.teams', JSON.stringify(teams));
+    } catch {}
+  }, [teams]);
 
   const totalDone      = jobs.filter((j) => j.status === 'completed').length;
   const totalActive    = jobs.filter((j) => j.status === 'active').length;
   const totalErrored   = jobs.filter((j) => j.status === 'errored').length;
+
+  const addTeam = (name: string) => {
+    if (!name.trim()) return;
+    const t: Team = { id: Math.random().toString(36).slice(2), name: name.trim(), members: [], shopAccess: false };
+    setTeams((s) => [t, ...s]);
+    setNewTeamName('');
+  };
+
+  const removeTeam = (id: string) => {
+    setTeams((s) => s.filter((t) => t.id !== id));
+  };
+
+  const toggleShopAccess = (id: string) => {
+    setTeams((s) => s.map(t => t.id === id ? { ...t, shopAccess: !t.shopAccess } : t));
+  };
 
   const sections: { label: string; items: MoreItem[] }[] = [
     {
@@ -80,6 +112,14 @@ export default function More() {
           name: 'About YTDLnis PWA',
           desc: 'Version 1.0 · Built with ❤',
           onClick: () => setShowAbout(true)
+        },
+        {
+          id: 'more-teams',
+          icon: '👥',
+          iconBg: 'var(--purple-dim)',
+          name: 'Teams',
+          desc: 'Manage team members and shop access',
+          onClick: () => setShowTeams(true)
         },
         {
           id: 'more-ytdlp-link',
@@ -150,6 +190,45 @@ export default function More() {
         yt-dlp supports 1000+ sites including YouTube, SoundCloud, Twitter/X, TikTok,
         Vimeo, Twitch, Reddit, Instagram, and many more.
       </div>
+
+      {/* Teams modal */}
+      {showTeams && (
+        <div className="modal-overlay" onClick={() => setShowTeams(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '60dvh' }}>
+            <div className="modal-handle" />
+            <div className="modal-header">
+              <span className="modal-title">Teams</span>
+              <button id="close-teams" className="btn btn-ghost btn-icon" onClick={() => setShowTeams(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: 16 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="New team name" style={{ flex: 1, padding: '8px 10px' }} />
+                <button className="btn" onClick={() => addTeam(newTeamName)}>Add</button>
+              </div>
+
+              {teams.length === 0 ? (
+                <div style={{ color: 'var(--t3)' }}>No teams yet. Create one to manage members and shop access.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {teams.map((t) => (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, border: '1px solid var(--border)', borderRadius: 8 }}>
+                      <div style={{ fontWeight: 700 }}>{t.name}</div>
+                      <div style={{ color: 'var(--t3)', fontSize: 13, marginLeft: 8 }}>{t.members.length} members</div>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <input type="checkbox" checked={t.shopAccess} onChange={() => toggleShopAccess(t.id)} />
+                          <span style={{ fontSize: 13 }}>Shop access</span>
+                        </label>
+                        <button className="btn btn-ghost" onClick={() => removeTeam(t.id)}>Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* About modal */}
       {showAbout && (
