@@ -5,6 +5,7 @@ backend/node_modules/
 
 # Build output
 frontend/dist/
+# Distribution folders
 dist/
 downloads/
 
