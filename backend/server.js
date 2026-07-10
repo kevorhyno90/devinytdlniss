@@ -9,6 +9,29 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const fs = require('fs');
+const TEAMS_FILE = path.join(__dirname, 'teams.json');
+
+function readTeams() {
+  try {
+    if (!fs.existsSync(TEAMS_FILE)) return [];
+    const raw = fs.readFileSync(TEAMS_FILE, 'utf8');
+    return JSON.parse(raw || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveTeams(teams) {
+  try {
+    fs.writeFileSync(TEAMS_FILE, JSON.stringify(teams, null, 2));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+
 // ─── State ────────────────────────────────────────────────────────────────────
 /** @type {Map<string, import('./types').Job>} */
 const jobs = new Map();
@@ -67,6 +90,66 @@ app.get('/api/health', async (req, res) => {
   const ytdlpOk = await checkYtDlp();
   res.json({ ok: true, ytdlp: ytdlpOk });
 });
+
+// ─── Teams API (simple file-backed) ───────────────────────────────────────────
+app.get('/api/teams', (req, res) => {
+  const teams = readTeams();
+  res.json(teams);
+});
+
+app.post('/api/teams', (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+  const teams = readTeams();
+  const id = crypto.randomUUID();
+  const team = { id, name: name.trim(), members: [], shopAccess: false };
+  teams.unshift(team);
+  if (!saveTeams(teams)) return res.status(500).json({ error: 'Failed to save team' });
+  res.json(team);
+});
+
+app.delete('/api/teams/:id', (req, res) => {
+  const teams = readTeams();
+  const idx = teams.findIndex((t) => t.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  const removed = teams.splice(idx, 1)[0];
+  if (!saveTeams(teams)) return res.status(500).json({ error: 'Failed to save teams' });
+  res.json(removed);
+});
+
+app.patch('/api/teams/:id', (req, res) => {
+  const { shopAccess, name } = req.body;
+  const teams = readTeams();
+  const idx = teams.findIndex((t) => t.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  if (typeof shopAccess === 'boolean') teams[idx].shopAccess = shopAccess;
+  if (typeof name === 'string') teams[idx].name = name.trim();
+  if (!saveTeams(teams)) return res.status(500).json({ error: 'Failed to save teams' });
+  res.json(teams[idx]);
+});
+
+app.post('/api/teams/:id/members', (req, res) => {
+  const { member } = req.body;
+  if (!member || !member.trim()) return res.status(400).json({ error: 'Member is required' });
+  const teams = readTeams();
+  const t = teams.find((x) => x.id === req.params.id);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  if (!t.members.includes(member)) t.members.push(member);
+  if (!saveTeams(teams)) return res.status(500).json({ error: 'Failed to save teams' });
+  res.json(t);
+});
+
+app.delete('/api/teams/:id/members', (req, res) => {
+  const { member } = req.body;
+  if (!member) return res.status(400).json({ error: 'Member is required' });
+  const teams = readTeams();
+  const t = teams.find((x) => x.id === req.params.id);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  t.members = t.members.filter((m) => m !== member);
+  if (!saveTeams(teams)) return res.status(500).json({ error: 'Failed to save teams' });
+  res.json(t);
+});
+
 
 /** Fetch video info + formats */
 app.post('/api/info', async (req, res) => {

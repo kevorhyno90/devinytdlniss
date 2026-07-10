@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useJobs } from '../App';
+import { listTeams, createTeam, deleteTeam, patchTeam, addTeamMember, removeTeamMember, Team } from '../api/client';
 
 interface MoreItem {
   id: string;
@@ -36,35 +37,73 @@ export default function More() {
   const [newTeamName, setNewTeamName] = useState('');
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('ytdlnis.teams');
-      if (raw) setTeams(JSON.parse(raw));
-    } catch {}
+    // nothing on mount
   }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('ytdlnis.teams', JSON.stringify(teams));
-    } catch {}
-  }, [teams]);
 
   const totalDone      = jobs.filter((j) => j.status === 'completed').length;
   const totalActive    = jobs.filter((j) => j.status === 'active').length;
   const totalErrored   = jobs.filter((j) => j.status === 'errored').length;
 
-  const addTeam = (name: string) => {
+  const fetchTeams = async () => {
+    try {
+      const res = await listTeams();
+      setTeams(res);
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const addTeam = async (name: string) => {
     if (!name.trim()) return;
-    const t: Team = { id: Math.random().toString(36).slice(2), name: name.trim(), members: [], shopAccess: false };
-    setTeams((s) => [t, ...s]);
-    setNewTeamName('');
+    try {
+      const t = await createTeam(name.trim());
+      setTeams((s) => [t, ...s]);
+      setNewTeamName('');
+    } catch (e) {
+      alert('Failed to create team');
+    }
   };
 
-  const removeTeam = (id: string) => {
-    setTeams((s) => s.filter((t) => t.id !== id));
+  const removeTeam = async (id: string) => {
+    if (!confirm('Remove team?')) return;
+    try {
+      await deleteTeam(id);
+      setTeams((s) => s.filter((t) => t.id !== id));
+    } catch {
+      alert('Failed to remove team');
+    }
   };
 
-  const toggleShopAccess = (id: string) => {
-    setTeams((s) => s.map(t => t.id === id ? { ...t, shopAccess: !t.shopAccess } : t));
+  const toggleShopAccess = async (id: string) => {
+    try {
+      const team = teams.find((t) => t.id === id);
+      if (!team) return;
+      const updated = await patchTeam(id, { shopAccess: !team.shopAccess });
+      setTeams((s) => s.map((t) => (t.id === id ? updated : t)));
+    } catch {
+      alert('Failed to update team');
+    }
+  };
+
+  const handleAddMember = async (id: string) => {
+    const m = prompt('Member name or email');
+    if (!m) return;
+    try {
+      const updated = await addTeamMember(id, m.trim());
+      setTeams((s) => s.map((t) => (t.id === id ? updated : t)));
+    } catch {
+      alert('Failed to add member');
+    }
+  };
+
+  const handleRemoveMember = async (teamId: string, member: string) => {
+    if (!confirm('Remove member?')) return;
+    try {
+      const updated = await removeTeamMember(teamId, member);
+      setTeams((s) => s.map((t) => (t.id === teamId ? updated : t)));
+    } catch {
+      alert('Failed to remove member');
+    }
   };
 
   const sections: { label: string; items: MoreItem[] }[] = [
@@ -219,15 +258,16 @@ export default function More() {
                           <input type="checkbox" checked={t.shopAccess} onChange={() => toggleShopAccess(t.id)} />
                           <span style={{ fontSize: 13 }}>Shop access</span>
                         </label>
-                        <button className="btn btn-ghost" onClick={() => removeTeam(t.id)}>Remove</button>
-                      </div>
+                      <button className="btn btn-ghost" onClick={() => handleAddMember(t.id)}>Add member</button>
+                      <button className="btn btn-ghost" onClick={() => removeTeam(t.id)}>Remove</button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
+      </div>
       )}
 
       {/* About modal */}
