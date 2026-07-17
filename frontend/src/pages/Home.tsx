@@ -14,11 +14,11 @@ export default function Home({ onGoToQueue }: Props) {
   const { addToast } = useToast();
   const [url, setUrl] = useState('');
   const [state, setState] = useState<HomeState>('idle');
-  const [info, setInfo] = useState<VideoInfo | null>(null);
+  const [results, setResults] = useState<VideoInfo[]>([]);
   const [type, setType] = useState<DownloadType>('video');
-  const [format, setFormat] = useState<Format | null>(null);
-  const [showPicker, setShowPicker] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [formatMap, setFormatMap] = useState<Record<string, Format>>({});
+  const [activePickerInfo, setActivePickerInfo] = useState<VideoInfo | null>(null);
+  const [downloadingUrls, setDownloadingUrls] = useState<Set<string>>(new Set());
   const [errorMsg, setErrorMsg] = useState('');
   const [backendOk, setBackendOk] = useState<boolean | null>(null);
 
@@ -44,13 +44,13 @@ export default function Home({ onGoToQueue }: Props) {
     if (!trimmed) return;
 
     setState('loading');
-    setInfo(null);
-    setFormat(null);
+    setResults([]);
+    setFormatMap({});
     setErrorMsg('');
 
     try {
       const data = await fetchInfo(trimmed);
-      setInfo(data);
+      setResults(data);
       setState('result');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to fetch info';
@@ -59,9 +59,10 @@ export default function Home({ onGoToQueue }: Props) {
     }
   };
 
-  const handleDownload = async () => {
-    if (!info) return;
-    setDownloading(true);
+  const handleDownload = async (info: VideoInfo) => {
+    setDownloadingUrls((prev) => new Set(prev).add(info.url));
+    const format = formatMap[info.url] || null;
+    
     try {
       await startDownload({
         url: info.url,
@@ -78,14 +79,13 @@ export default function Home({ onGoToQueue }: Props) {
     } catch {
       addToast('Failed to start download', 'error');
     } finally {
-      setDownloading(false);
+      setDownloadingUrls((prev) => {
+        const next = new Set(prev);
+        next.delete(info.url);
+        return next;
+      });
     }
   };
-
-  const formatLabel =
-    format
-      ? format.format_note || `${format.height ? format.height + 'p' : ''} ${format.container}`.trim()
-      : 'Best Quality';
 
   return (
     <div>
@@ -123,7 +123,7 @@ export default function Home({ onGoToQueue }: Props) {
           <input
             id="url-input"
             className="home-url-input"
-            placeholder="Paste a YouTube, SoundCloud, Twitter… URL"
+            placeholder="Paste a URL or search (e.g. 'sad music')"
             value={url}
             onChange={(e) => { setUrl(e.target.value); setState('idle'); }}
             onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
@@ -142,7 +142,7 @@ export default function Home({ onGoToQueue }: Props) {
               key={t}
               id={`type-${t}`}
               className={`type-chip${type === t ? ' active' : ''}`}
-              onClick={() => { setType(t); setFormat(null); }}
+              onClick={() => { setType(t); setFormatMap({}); }}
             >
               {t === 'video' ? '🎬' : t === 'audio' ? '🎵' : '⚡'}
               {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -163,7 +163,7 @@ export default function Home({ onGoToQueue }: Props) {
               Fetching info…
             </span>
           ) : (
-            '🔍 Analyze URL'
+            '🔍 Search & Analyze'
           )}
         </button>
       </div>
@@ -186,84 +186,97 @@ export default function Home({ onGoToQueue }: Props) {
         </div>
       )}
 
-      {/* Result card */}
-      {state === 'result' && info && (
-        <div className="result-card">
-          {/* Thumbnail */}
-          <div className="result-thumb-container">
-            {info.thumb ? (
-              <img className="result-thumb" src={info.thumb} alt={info.title} />
-            ) : (
-              <div style={{
-                width: '100%', height: '100%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 48, opacity: 0.3
-              }}>
-                {type === 'audio' ? '🎵' : '🎬'}
+      {/* Result list */}
+      {state === 'result' && results.length > 0 && (
+        <div style={{ paddingBottom: 20 }}>
+          {results.map((info, i) => {
+            const format = formatMap[info.url] || null;
+            const formatLabel = format
+              ? format.format_note || `${format.height ? format.height + 'p' : ''} ${format.container}`.trim()
+              : 'Best Quality';
+            const downloading = downloadingUrls.has(info.url);
+
+            return (
+              <div key={`${info.url}-${i}`} className="result-card">
+                {/* Thumbnail */}
+                <div className="result-thumb-container">
+                  {info.thumb ? (
+                    <img className="result-thumb" src={info.thumb} alt={info.title} />
+                  ) : (
+                    <div style={{
+                      width: '100%', height: '100%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 48, opacity: 0.3
+                    }}>
+                      {type === 'audio' ? '🎵' : '🎬'}
+                    </div>
+                  )}
+                  <div className="result-thumb-overlay" />
+                  {info.duration && (
+                    <span className="result-duration">{info.duration}</span>
+                  )}
+                </div>
+
+                <div className="result-body">
+                  <div className="result-title">{info.title}</div>
+                  {info.author && (
+                    <div className="result-author">by {info.author}</div>
+                  )}
+
+                  {/* Format + website row */}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    {info.website && (
+                      <span className="badge badge-auto">🌐 {info.website}</span>
+                    )}
+                    <span className={`badge badge-${type}`}>
+                      {type === 'video' ? '🎬' : type === 'audio' ? '🎵' : '⚡'} {type}
+                    </span>
+                    {info.formats.length > 0 && (
+                      <span className="badge badge-queued">
+                        {info.formats.length} formats
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="result-actions">
+                    {info.formats.length > 0 && (
+                      <button
+                        className="result-format-btn"
+                        onClick={() => setActivePickerInfo(info)}
+                      >
+                        ⚙ {formatLabel}
+                      </button>
+                    )}
+                    <button
+                      className="result-download-btn"
+                      onClick={() => handleDownload(info)}
+                      disabled={downloading}
+                    >
+                      {downloading ? (
+                        <><span className="spinner" /> Adding…</>
+                      ) : (
+                        <>⬇ Download</>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
-            )}
-            <div className="result-thumb-overlay" />
-            {info.duration && (
-              <span className="result-duration">{info.duration}</span>
-            )}
-          </div>
-
-          <div className="result-body">
-            <div className="result-title">{info.title}</div>
-            {info.author && (
-              <div className="result-author">by {info.author}</div>
-            )}
-
-            {/* Format + website row */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              {info.website && (
-                <span className="badge badge-auto">🌐 {info.website}</span>
-              )}
-              <span className={`badge badge-${type}`}>
-                {type === 'video' ? '🎬' : type === 'audio' ? '🎵' : '⚡'} {type}
-              </span>
-              {info.formats.length > 0 && (
-                <span className="badge badge-queued">
-                  {info.formats.length} formats
-                </span>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="result-actions">
-              {info.formats.length > 0 && (
-                <button
-                  id="format-picker-btn"
-                  className="result-format-btn"
-                  onClick={() => setShowPicker(true)}
-                >
-                  ⚙ {formatLabel}
-                </button>
-              )}
-              <button
-                id="download-btn"
-                className="result-download-btn"
-                onClick={handleDownload}
-                disabled={downloading}
-              >
-                {downloading ? (
-                  <><span className="spinner" /> Adding…</>
-                ) : (
-                  <>⬇ Download</>
-                )}
-              </button>
-            </div>
-          </div>
+            );
+          })}
         </div>
       )}
 
       {/* Format picker modal */}
-      {showPicker && info && (
+      {activePickerInfo && (
         <FormatPicker
-          formats={info.formats}
-          selected={format}
-          onSelect={(f) => { setFormat(f); setShowPicker(false); }}
-          onClose={() => setShowPicker(false)}
+          formats={activePickerInfo.formats}
+          selected={formatMap[activePickerInfo.url] || null}
+          onSelect={(f) => { 
+            setFormatMap(prev => ({ ...prev, [activePickerInfo.url]: f })); 
+            setActivePickerInfo(null); 
+          }}
+          onClose={() => setActivePickerInfo(null)}
           type={type === 'audio' ? 'audio' : 'video'}
         />
       )}

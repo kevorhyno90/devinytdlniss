@@ -38,7 +38,7 @@ export async function getHealth(): Promise<{ ok: boolean; ytdlp: boolean }> {
 }
 
 /** Fetch video metadata + formats from URL */
-export async function fetchInfo(url: string): Promise<VideoInfo> {
+export async function fetchInfo(url: string): Promise<VideoInfo[]> {
   const res = await authFetch(`${BASE}/info`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

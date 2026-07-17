@@ -310,7 +310,7 @@ function fetchVideoInfo(url) {
   return new Promise((resolve, reject) => {
     // Treat as search query if it doesn't look like a URL
     const isUrl = /^https?:\/\//i.test(url);
-    const target = isUrl ? url : `ytsearch1:${url}`;
+    const target = isUrl ? url : `ytsearch10:${url}`;
 
     const args = ['--dump-json', '--no-playlist', '--no-warnings', target];
     const proc = spawn('yt-dlp', args);
@@ -329,35 +329,44 @@ function fetchVideoInfo(url) {
     });
 
     proc.on('close', (code) => {
-      if (code !== 0) {
+      if (code !== 0 && stdout.trim() === '') {
         return reject(new Error(stderr.trim() || 'yt-dlp returned non-zero exit code'));
       }
       try {
-        const info = JSON.parse(stdout);
-        // Normalize format list
-        const formats = (info.formats || []).map((f) => ({
-          format_id: f.format_id || '',
-          container: f.ext || f.container || '',
-          vcodec: f.vcodec || '',
-          acodec: f.acodec || '',
-          filesize: f.filesize || f.filesize_approx || 0,
-          format_note: f.format_note || f.resolution || '',
-          fps: f.fps ? String(f.fps) : '',
-          width: f.width || null,
-          height: f.height || null,
-          tbr: f.tbr ? String(f.tbr) : '',
-          url: '' // strip direct URLs for security
-        }));
+        const lines = stdout.split('\n').filter(l => l.trim().length > 0);
+        if (lines.length === 0) {
+           return reject(new Error('No results found.'));
+        }
+        
+        const results = lines.map(line => {
+          const info = JSON.parse(line);
+          // Normalize format list
+          const formats = (info.formats || []).map((f) => ({
+            format_id: f.format_id || '',
+            container: f.ext || f.container || '',
+            vcodec: f.vcodec || '',
+            acodec: f.acodec || '',
+            filesize: f.filesize || f.filesize_approx || 0,
+            format_note: f.format_note || f.resolution || '',
+            fps: f.fps ? String(f.fps) : '',
+            width: f.width || null,
+            height: f.height || null,
+            tbr: f.tbr ? String(f.tbr) : '',
+            url: '' // strip direct URLs for security
+          }));
 
-        resolve({
-          url: info.webpage_url || info.original_url || url,
-          title: info.title || 'Unknown',
-          author: info.uploader || info.channel || '',
-          thumb: info.thumbnail || '',
-          duration: formatDuration(info.duration),
-          website: info.webpage_url_domain || info.extractor || '',
-          formats
+          return {
+            url: info.webpage_url || info.original_url || url,
+            title: info.title || 'Unknown',
+            author: info.uploader || info.channel || '',
+            thumb: info.thumbnail || '',
+            duration: formatDuration(info.duration),
+            website: info.webpage_url_domain || info.extractor || '',
+            formats
+          };
         });
+
+        resolve(results);
       } catch (e) {
         reject(new Error('Failed to parse yt-dlp output'));
       }
