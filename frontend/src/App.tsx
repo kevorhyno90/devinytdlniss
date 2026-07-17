@@ -8,7 +8,7 @@ import Queue from './pages/Queue';
 import History from './pages/History';
 import More from './pages/More';
 import Login from './pages/Login';
-import { getToken } from './api/client';
+import { getToken, BASE } from './api/client';
 import { startPeriodicSync } from './api/sync';
 
 // ─── Toast Context ─────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ export default function App() {
     let retryTimer: ReturnType<typeof setTimeout>;
 
     function connect() {
-      source = new EventSource('/api/events');
+      source = new EventSource(`${BASE}/events`);
 
       source.addEventListener('job', (e: MessageEvent) => {
         try {
