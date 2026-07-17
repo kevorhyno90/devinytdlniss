@@ -1,6 +1,6 @@
 import type { VideoInfo, DownloadJob, DownloadType, Format, HistoryEntry, CommandTemplate } from '../types';
 
-const BASE = '/api';
+const BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export function getToken() {
   return localStorage.getItem('ytdlnis_token');
