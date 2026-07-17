@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { setToken, getToken } from '../api/client';
-import './Login.css'; // Let's use inline styles or existing globals to keep it simple, but we'll define a few styles here.
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
